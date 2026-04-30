@@ -28,15 +28,15 @@ export default function AuthPage() {
       console.error("Google Auth Error:", err);
       // Handle the case where Google might reject the client ID or other OAuth errors
       if (err.message && (err.message.includes('401') || err.message.includes('deleted_client'))) {
-        setError('গুগল লগইন কনফিগারেশনে সমস্যা (Error 401)। দয়া করে আপনার ব্রাউজার ক্যাশ (Cache) ক্লিয়ার করুন অথবা অ্যাপটি নতুন ট্যাবে (Open in new tab) খুলে চেষ্টা করুন। যদি আপনি এই প্রোজেক্টটি গিটহাব থেকে ইমপোর্ট করে থাকেন, তবে নিশ্চিত করুন যে সঠিক Google Client ID ব্যবহার করা হয়েছে।');
+        setError('Google Login Configuration Issue (Error 401). Please clear your browser cache or try opening the app in a new tab. If you imported this project from GitHub, ensure the correct Google Client ID is used.');
       } else if (err.code === 'auth/popup-closed-by-user') {
-        setError('লগইন পপ-আপটি বন্ধ হয়ে গেছে। দয়া করে আবার চেষ্টা করুন অথবা ঠিকমতো কাজ না করলে অ্যাপটি নতুন ট্যাবে (Open in new tab) খুলুন।');
+        setError('Login popup closed. Please try again or open the app in a new tab if it doesn\'t work correctly.');
       } else if (err.code === 'auth/popup-blocked') {
-        setError('আপনার ব্রাউজার পপ-আপ ব্লক করেছে। পপ-আপ এলাউ করে আবার ট্রাই করুন।');
+        setError('Your browser blocked the popup. Please allow popups and try again.');
       } else if (err.code === 'auth/cancelled-popup-request') {
-        setError('পূর্বের লগইন রিকোয়েস্ট বাতিল করা হয়েছে। আবার চেষ্টা করুন।');
+        setError('Previous login request cancelled. Please try again.');
       } else {
-        setError('গুগল লগইন সফল হয়নি। দয়া করে নতুন ট্যাবে অ্যাপটি খুলে চেষ্টা করুন। (Error: ' + (err.code || 'Unknown') + ')');
+        setError('Google login failed. Please try opening the app in a new tab. (Error: ' + (err.code || 'Unknown') + ')');
       }
     } finally {
       setLoading(false);
@@ -132,7 +132,7 @@ export default function AuthPage() {
               <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="আপনার পূর্ণ নাম"
+                placeholder="Full Name"
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -145,7 +145,7 @@ export default function AuthPage() {
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="email"
-                placeholder="ইউজার আইডি (ইমেইল)"
+                placeholder="User ID (Email)"
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -157,7 +157,7 @@ export default function AuthPage() {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="password"
-                placeholder="পাসওয়ার্ড"
+                placeholder="Password"
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -175,14 +175,14 @@ export default function AuthPage() {
             disabled={loading}
             className="w-full bg-black text-white py-4 rounded-2xl font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 mt-4 shadow-xl"
           >
-            {loading ? 'প্রসেসিং হচ্ছে...' : isLogin ? 'লগইন করুন' : 'অ্যাকাউন্ট খুলুন'}
+            {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
           </button>
         </form>
 
           <div className="mt-4 flex items-center gap-4">
             <div className="h-px bg-gray-200 flex-1" />
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">অথবা</span>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">OR</span>
               {isLogin && (
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export default function AuthPage() {
             <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94L5.84 14.1z" />
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
           </svg>
-          গুগল দিয়ে লগইন করুন
+          Sign in with Google
         </button>
 
         <div className="mt-8 text-center">
@@ -217,7 +217,7 @@ export default function AuthPage() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-gray-500 hover:text-black font-semibold transition-colors text-sm"
           >
-            {isLogin ? "অ্যাকাউন্ট নেই? সাইন আপ করুন" : "অ্যাকাউন্ট আছে? লগইন করুন"}
+            {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
           </button>
         </div>
       </motion.div>

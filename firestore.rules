@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Connectivity Check Rules ---
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- User Profile Rules ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow create: if isOwner(userId)
+        && request.auth.token.email_verified == true
+        && isValidUser(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().keys().hasOnly(['uid', 'email', 'name', 'createdAt']);
+      allow update: if isOwner(userId)
+        && request.auth.token.email_verified == true
+        && isValidUser(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'hasMasterKey'])
+          || isAdmin()
+        );
+    }
+
+    function isValidUser(data) {
+      return data.uid is string
+        && data.email is string
+        && data.name is string
+        && ( !('hasMasterKey' in data) || data.hasMasterKey is bool );
+    }
+
+    function isAdmin() {
+      // Add admin emails here if needed
+      return isSignedIn() && request.auth.token.email in ['morshedsfl@gmail.com'];
+    }
+
+    // --- File Metadata Rules ---
+    match /files/{fileId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn()
+        && isValidFile(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && isValidId(fileId);
+
+      allow update: if isOwner(existing().ownerId)
+        && isValidFile(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'driveId', 'isEncrypted']);
+
+      allow delete: if isOwner(existing().ownerId);
+    }
+
+    function isValidFile(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'size', 'type', 'storagePath', 'driveId', 'isEncrypted', 'createdAt'])
+        && data.keys().size() == 8
+        && data.ownerId is string
+        && data.name is string && data.name.size() <= 255
+        && data.size is int
+        && data.type is string
+        && data.storagePath is string
+        && data.driveId is string
+        && data.isEncrypted is bool;
+    }
+
+    // --- Activity Log Rules ---
+    match /logs/{logId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidLog(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time;
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['userId', 'action', 'details', 'createdAt'])
+        && data.keys().size() == 4
+        && data.userId is string
+        && data.action is string
+        && data.details is string;
+    }
+  }
+}

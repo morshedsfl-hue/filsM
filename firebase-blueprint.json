@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "hasMasterKey": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "createdAt"]
+    },
+    "FileMetadata": {
+      "title": "File Metadata",
+      "description": "Metadata for uploaded files",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "size": { "type": "integer" },
+        "type": { "type": "string" },
+        "storagePath": { "type": "string" },
+        "driveId": { "type": "string" },
+        "isEncrypted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerId", "name", "size", "type", "storagePath", "isEncrypted", "createdAt"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "Logs for user activities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "action", "details", "createdAt"]
+    },
+    "TestConnection": {
+      "title": "Test Connection",
+      "description": "Used for connection testing",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/test/connection": {
+      "schema": "TestConnection",
+      "description": "Path used for connectivity checks"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles"
+    },
+    "/files/{fileId}": {
+      "schema": "FileMetadata",
+      "description": "Individual file metadata entries"
+    },
+    "/logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Activity logs for the system"
+    }
+  }
+}

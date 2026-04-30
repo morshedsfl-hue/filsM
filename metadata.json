@@ -1,0 +1,6 @@
+{
+  "name": "Files.M",
+  "description": "Secure file vault with AES-256 encryption, Firebase authentication, and Google Drive integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

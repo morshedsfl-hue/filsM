@@ -37,13 +37,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn();
       allow create: if isOwner(userId)
-        && request.auth.token.email_verified == true
         && isValidUser(incoming())
         && incoming().uid == request.auth.uid
         && incoming().createdAt == request.time
         && incoming().keys().hasOnly(['uid', 'email', 'name', 'createdAt']);
       allow update: if isOwner(userId)
-        && request.auth.token.email_verified == true
         && isValidUser(incoming())
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt

@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [isDriveApiDisabled, setIsDriveApiDisabled] = useState(false);
   const [isVerifyingApi, setIsVerifyingApi] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  const [driveQuota, setDriveQuota] = useState<{ limit: string; usage: string } | null>(null);
   const [driveApiEnableUrl, setDriveApiEnableUrl] = useState('https://console.cloud.google.com/apis/library/drive.googleapis.com');
 
   const retestDriveApi = async () => {
@@ -120,6 +121,10 @@ export default function Dashboard() {
       });
       
       if (!searchRes.ok) {
+        if (searchRes.status === 401) {
+          logoutDrive();
+          throw new Error('Google Drive session expired. Please connect again.');
+        }
         const errData = await searchRes.json();
         const errMsg = errData.error?.message || searchRes.statusText;
         const isApiError = errMsg.toLowerCase().includes('google drive api has not been used') || 
@@ -157,6 +162,10 @@ export default function Dashboard() {
       });
       
       if (!createRes.ok) {
+        if (createRes.status === 401) {
+          logoutDrive();
+          throw new Error('Google Drive session expired. Please connect again.');
+        }
         const errData = await createRes.json();
         throw new Error(`Drive folder creation failed: ${errData.error?.message || createRes.statusText}`);
       }
@@ -173,7 +182,7 @@ export default function Dashboard() {
     e.preventDefault();
     if (!selectedFile || !user) return;
     if (encryptBeforeUpload && !encryptionKey) {
-      alert('দয়া করে এনক্রিপশন কি (Encryption Key) দিন।');
+      alert('Please provide an encryption key.');
       return;
     }
 
@@ -181,7 +190,7 @@ export default function Dashboard() {
     setUploadProgress(0);
     try {
       if (!accessToken) {
-        alert('দয়া করে প্রথমে গুগল ড্রাইভ (Sync Drive) কানেক্ট করুন।');
+        alert('Please connect Google Drive (Sync Drive) first.');
         setUploading(false);
         return;
       }
@@ -255,6 +264,11 @@ export default function Dashboard() {
           };
 
           xhr.onload = () => {
+            if (xhr.status === 401) {
+              logoutDrive();
+              reject(new Error('Google Drive session expired. Please connect again.'));
+              return;
+            }
             if (xhr.status >= 200 && xhr.status < 300) {
               const response = JSON.parse(xhr.responseText);
               resolve(response.id);
@@ -303,19 +317,20 @@ export default function Dashboard() {
       setIsUploadOpen(false);
       setSelectedFile(null);
       setEncryptionKey('');
+      fetchDriveQuota();
     } catch (error: any) {
       console.error(error);
-      let message = 'গুগল ড্রাইভ আপলোড ব্যর্থ হয়েছে। ড্রাইভ এক্সেস চেক করুন।';
+      let message = 'Google Drive upload failed. Please check drive access.';
       
       const errorStr = error.message?.toLowerCase() || '';
       if (errorStr.includes('google drive api has not been used')) {
         // Detailed error instructions already shown via alert in getOrCreateVaultFolder
         return;
       } else if (errorStr.includes('unauthorized') || errorStr.includes('invalid authentication credentials')) {
-        message = 'গুগল ড্রাইভ কানেকশন সেশন শেষ হয়ে গেছে। দয়া করে আবার "Connect Drive" বাটনে ক্লিক করে কানেক্ট করুন।';
+        message = 'Google Drive session expired. Please connect again.';
         logoutDrive();
       } else if (errorStr.includes('permission-denied') || errorStr.includes('insufficient permissions')) {
-        message = 'ড্রাইভ পারমিশন পাওয়া যায়নি। ড্রাইভ কানেক্ট করার সময় সকল পারমিশন (drive.file) চেক করেছেন কিনা নিশ্চিত করুন।';
+        message = 'Drive permissions not granted. Please check drive.file scope.';
       }
       alert(message);
     } finally {
@@ -325,7 +340,7 @@ export default function Dashboard() {
 
   const handleRefresh = async () => {
     if (!accessToken) {
-      alert('গুগল ড্রাইভ কানেক্ট করুন রিফ্রেশ করার জন্য।');
+      alert('Please connect Google Drive to refresh.');
       return;
     }
     
@@ -341,8 +356,28 @@ export default function Dashboard() {
     }
   };
 
+  const fetchDriveQuota = async () => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDriveQuota(data.storageQuota);
+      } else if (res.status === 401) {
+        logoutDrive();
+      }
+    } catch (err) {
+      console.error("Failed to fetch drive quota:", err);
+    }
+  };
+
   const syncWithDrive = async () => {
     if (!accessToken || !user) return;
+    
+    // Fetch quota info first
+    fetchDriveQuota();
     
     try {
       // 1. Get or Create Vault Folder
@@ -358,7 +393,12 @@ export default function Dashboard() {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         
-        if (!listRes.ok) break;
+        if (!listRes.ok) {
+          if (listRes.status === 401) {
+            logoutDrive();
+          }
+          break;
+        }
         const listData = await listRes.json();
         if (listData.files) {
           driveFileIds = [...driveFileIds, ...listData.files.map((f: any) => f.id)];
@@ -396,7 +436,7 @@ export default function Dashboard() {
         console.error(err);
       }
     } else {
-      if (window.confirm('গুগল ড্রাইভ থেকে ডিসকানেক্ট করতে চান?')) {
+      if (window.confirm('Do you want to disconnect from Google Drive?')) {
         logoutDrive();
       }
     }
@@ -404,7 +444,7 @@ export default function Dashboard() {
 
   const handleDownload = async (file: any) => {
     if (!accessToken) {
-      alert('গুগল ড্রাইভ কানেক্ট না থাকলে ডাউনলোড সম্ভব নয়।');
+      alert('Download is not possible without Google Drive connection.');
       return;
     }
 
@@ -427,16 +467,22 @@ export default function Dashboard() {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
 
-      if (!driveRes.ok) throw new Error('Drive download failed');
+      if (!driveRes.ok) {
+        if (driveRes.status === 401) {
+          logoutDrive();
+          throw new Error('Google Drive session expired. Please connect again.');
+        }
+        throw new Error('Drive download failed');
+      }
       
       let dataUrl: string;
       let downloadName = file.name;
 
       if (file.isEncrypted) {
-        setProcessingStatus('ফাইল ডাউনলোড হচ্ছে...');
+        setProcessingStatus('Downloading file...');
         const encryptedText = await driveRes.text();
         
-        setProcessingStatus('ডিক্রিপশন চলছে...');
+        setProcessingStatus('Decrypting...');
         // Artificial delay to allow UI to render "Decrypting..."
         await new Promise(resolve => setTimeout(resolve, 500));
         
@@ -444,7 +490,7 @@ export default function Dashboard() {
         
         setProcessingStatus(null);
         if (!decrypted) {
-          alert('ডিক্রিপশন ব্যর্থ হয়েছে। সঠিক মাস্টার কি (Key) ব্যবহার করুন।');
+          alert('Decryption failed. Please use the correct master key.');
           setDownloading(null);
           setDecryptionKey('');
           return;
@@ -484,7 +530,7 @@ export default function Dashboard() {
       setFileToDecrypt(null);
     } catch (error) {
       console.error(error);
-      alert('ডাউনলোড ব্যর্থ হয়েছে। ড্রাইভ এক্সেস চেক করুন।');
+      alert('Download failed. Please check drive access.');
     } finally {
       setDownloading(null);
       setProcessingStatus(null);
@@ -493,7 +539,7 @@ export default function Dashboard() {
  
   const handlePreview = async (file: any) => {
     if (!accessToken) {
-      alert('গুগল ড্রাইভ কানেক্ট করুন।');
+      alert('Please connect Google Drive.');
       return;
     }
 
@@ -517,13 +563,19 @@ export default function Dashboard() {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
 
-      if (!driveRes.ok) throw new Error('Drive download failed');
+      if (!driveRes.ok) {
+        if (driveRes.status === 401) {
+          logoutDrive();
+          throw new Error('Google Drive session expired. Please connect again.');
+        }
+        throw new Error('Drive download failed');
+      }
 
       let dataUrl: string;
       let displayName = file.name;
 
       if (file.isEncrypted) {
-        setProcessingStatus('ডাউনলোড ও ডিক্রিপশন চলছে...');
+        setProcessingStatus('Downloading and Decrypting...');
         const encryptedText = await driveRes.text();
         
         // Give UI chance to show status
@@ -533,7 +585,7 @@ export default function Dashboard() {
         setProcessingStatus(null);
         
         if (!decrypted) {
-          alert('ভুল মাস্টার কি!');
+          alert('Incorrect Master Key!');
           setDownloading(null);
           return;
         }
@@ -577,7 +629,7 @@ export default function Dashboard() {
       setFileToDecrypt(null);
     } catch (error) {
       console.error(error);
-      alert('প্রিভিউ লোড করতে সমস্যা হয়েছে।');
+      alert('Failed to load preview.');
     } finally {
       setDownloading(null);
       setProcessingStatus(null);
@@ -601,17 +653,17 @@ export default function Dashboard() {
     
     // If a key is already set, verify old key
     if (profile?.hasMasterKey && oldKeyInput !== encryptionKey) {
-      alert('পুরানো মাস্টার কি ভুল!');
+      alert('Incorrect old master key!');
       return;
     }
 
     if (!newKeyInput) {
-      alert('নতুন মাস্টার কি দিন!');
+      alert('Please provide a new master key!');
       return;
     }
 
     if (newKeyInput !== confirmKeyInput) {
-      alert('নতুন কি এবং কনফার্ম কি মিলছে না!');
+      alert('New key and confirmation key do not match!');
       return;
     }
 
@@ -622,7 +674,7 @@ export default function Dashboard() {
     setOldKeyInput('');
     setNewKeyInput('');
     setConfirmKeyInput('');
-    alert('মাস্টার কি সফলভাবে আপডেট হয়েছে।');
+    alert('Master key updated successfully.');
   };
 
   const handleDecryptionSubmit = (e: React.FormEvent) => {
@@ -637,7 +689,7 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (file: any) => {
-    if (!window.confirm('আপনি কি নিশ্চিতভাবে এই ফাইলটি মুছে ফেলতে চান?')) return;
+    if (!window.confirm('Are you sure you want to delete this file?')) return;
     try {
       // 1. Delete from Firestore first (this removes it from UI immediately due to onSnapshot)
       try {
@@ -649,10 +701,13 @@ export default function Dashboard() {
       // 2. Attempt to delete from Google Drive if we have access
       if (accessToken && file.driveId) {
         try {
-          await fetch(`https://www.googleapis.com/drive/v3/files/${file.driveId}`, {
+          const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.driveId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
+          if (driveRes.status === 401) {
+            logoutDrive();
+          }
         } catch (driveErr) {
           console.error("Drive deletion failed:", driveErr);
           // We don't throw here because the reference is already gone from Firestore
@@ -670,9 +725,10 @@ export default function Dashboard() {
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, 'logs');
       }
+      fetchDriveQuota();
     } catch (error: any) {
       console.error(error);
-      alert('মুছে ফেলা সম্ভব হয়নি।');
+      alert('Failed to delete file.');
     }
   };
 
@@ -687,52 +743,52 @@ export default function Dashboard() {
       <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
         <Cloud className="w-10 h-10 text-gray-300" />
       </div>
-      <h3 className="text-xl font-bold text-gray-900 mb-2">স্বাগতম, আপনার ভোল্ট খালি!</h3>
+      <h3 className="text-xl font-bold text-gray-900 mb-2">Welcome, your Vault is empty!</h3>
       <p className="text-gray-500 max-w-md mb-8 leading-relaxed">
-        আপনার গুরুত্বপূর্ণ ফাইলগুলো গুগল ড্রাইভে এনক্রিপ্টেড অবস্থায় জমা রাখতে নিচের ধাপগুলো অনুসরণ করুন।
+        Follow these steps to store your important files encrypted in your Google Drive.
       </p>
       
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl">
         <div className="flex flex-col items-center">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 font-bold ${accessToken ? 'bg-green-500 text-white' : 'bg-black text-white'}`}>১</div>
-          <p className="text-xs font-bold text-gray-400 uppercase mb-2">ধাপ ১</p>
-          <p className="text-[13px] font-semibold text-gray-700">গুগল ড্রাইভ কানেক্ট করুন</p>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 font-bold ${accessToken ? 'bg-green-500 text-white' : 'bg-black text-white'}`}>1</div>
+          <p className="text-xs font-bold text-gray-400 uppercase mb-2">STEP 1</p>
+          <p className="text-[13px] font-semibold text-gray-700">Connect Google Drive</p>
           {!accessToken && (
             <button 
               onClick={handleDriveAction}
               className="mt-3 text-xs font-bold text-blue-600 hover:underline"
             >
-              এখনই করুন →
+              Do it now →
             </button>
           )}
           {accessToken && <CheckCircle2 className="mt-3 w-5 h-5 text-green-500" />}
         </div>
         
         <div className="flex flex-col items-center">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 font-bold ${profile?.hasMasterKey ? 'bg-green-500 text-white' : 'bg-black text-white'}`}>২</div>
-          <p className="text-xs font-bold text-gray-400 uppercase mb-2">ধাপ ২</p>
-          <p className="text-[13px] font-semibold text-gray-700">মাস্টার কি সেট করুন</p>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 font-bold ${profile?.hasMasterKey ? 'bg-green-500 text-white' : 'bg-black text-white'}`}>2</div>
+          <p className="text-xs font-bold text-gray-400 uppercase mb-2">STEP 2</p>
+          <p className="text-[13px] font-semibold text-gray-700">Set Master Key</p>
           {!profile?.hasMasterKey && (
             <button 
               onClick={() => setIsSettingsOpen(true)}
               className="mt-3 text-xs font-bold text-blue-600 hover:underline"
             >
-              সেটিংসে যান →
+              Go to Settings →
             </button>
           )}
           {profile?.hasMasterKey && <CheckCircle2 className="mt-3 w-5 h-5 text-green-500" />}
         </div>
 
         <div className="flex flex-col items-center">
-          <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center mb-3 font-bold">৩</div>
-          <p className="text-xs font-bold text-gray-400 uppercase mb-2">ধাপ ৩</p>
-          <p className="text-[13px] font-semibold text-gray-700">ফাইল আপলোড শুরু করুন</p>
+          <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center mb-3 font-bold">3</div>
+          <p className="text-xs font-bold text-gray-400 uppercase mb-2">STEP 3</p>
+          <p className="text-[13px] font-semibold text-gray-700">Start Uploading</p>
           <button 
             onClick={() => setIsUploadOpen(true)}
             disabled={!accessToken || !profile?.hasMasterKey}
             className="mt-3 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-black transition-all disabled:opacity-30"
           >
-            আপলোড করুন
+            Upload Now
           </button>
         </div>
       </div>
@@ -747,10 +803,12 @@ export default function Dashboard() {
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
+    if (isNaN(bytes)) return 'Unknown';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + ' ' + sizes[sizeIndex];
   };
 
   return (
@@ -770,7 +828,7 @@ export default function Dashboard() {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">{processingStatus}</h3>
               <p className="text-xs text-gray-500 leading-relaxed font-medium">
-                বড় ফাইলের ক্ষেত্রে ডিক্রিপশনে কিছুটা সময় নিতে পারে। অনুগ্রহ করে পেজটি বন্ধ করবেন না।
+                Large files might take some time for decryption. Please do not close this page.
               </p>
             </div>
           </motion.div>
@@ -820,7 +878,7 @@ export default function Dashboard() {
             >
               <Cloud className="w-3.5 h-3.5" />
               <div className="flex flex-col items-start leading-tight">
-                <span>{accessToken ? 'কনকটেড' : 'ড্রাইভ কানেক্ট করুন'}</span>
+                <span>{accessToken ? 'CONNECTED' : 'CONNECT DRIVE'}</span>
                 {driveUser && <span className="text-[9px] font-medium opacity-70 hidden lg:inline">{driveUser.email}</span>}
               </div>
             </button>
@@ -828,7 +886,7 @@ export default function Dashboard() {
               <button 
                 onClick={() => requestToken({ prompt: 'select_account' })}
                 className="p-2 bg-gray-100 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                title="অ্যাকাউন্ট পরিবর্তন করুন"
+                title="Switch Account"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -837,7 +895,7 @@ export default function Dashboard() {
           <button 
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all group"
-              title="মাস্টার কি সেটিংস"
+              title="Master Key Settings"
             >
               <Settings className="w-4 h-4 text-gray-500 group-hover:text-white" />
           </button>
@@ -862,7 +920,7 @@ export default function Dashboard() {
         >
           <Cloud className={`w-3.5 h-3.5 ${accessToken ? 'animate-pulse' : ''}`} />
           <div className="flex flex-col items-center leading-tight">
-            <span>{accessToken ? 'কনকটেড (Cloud Sync ON)' : 'ড্রাইভ কানেক্ট করুন (অফলাইন)'}</span>
+            <span>{accessToken ? 'CONNECTED (Cloud Sync ON)' : 'CONNECT DRIVE (Offline)'}</span>
             {accessToken && driveUser && (
               <span className="text-[8px] font-medium opacity-80 mt-0.5">{driveUser.email}</span>
             )}
@@ -880,23 +938,23 @@ export default function Dashboard() {
             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <Cloud className="w-10 h-10 text-red-500" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">একটি গুরুত্বপূর্ণ কাজ বাকি!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">One Important Step Remaining!</h2>
             <p className="text-gray-600 mb-8 leading-relaxed">
-              আপনার ফাইলগুলো ড্রাইভে জমা রাখতে নিচের ধাপগুলো অনুসরণ করুন:
+              Follow these steps to store your files in Google Drive:
             </p>
             
             <div className="text-left space-y-4 mb-8">
               <div className="flex gap-3">
-                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">১</div>
-                <p className="text-sm text-gray-700">নিচের <b>"Enable API"</b> বাটনে ক্লিক করে নতুন পেজে যান।</p>
+                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">1</div>
+                <p className="text-sm text-gray-700">Click the <b>"Enable API"</b> button below to open a new page.</p>
               </div>
               <div className="flex gap-3">
-                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">২</div>
-                <p className="text-sm text-gray-700">সেখানে নীল রঙের <b>"ENABLE"</b> বাটনটি প্রেস করুন।</p>
+                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">2</div>
+                <p className="text-sm text-gray-700">Press the blue <b>"ENABLE"</b> button on that page.</p>
               </div>
               <div className="flex gap-3">
-                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">৩</div>
-                <p className="text-sm text-gray-700">১ মিনিট পর এই পেজে ফিরে এসে <b>"রিফ্রেশ"</b> দিন।</p>
+                <div className="w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">3</div>
+                <p className="text-sm text-gray-700">Return to this page after 1 minute and click <b>"Refresh"</b>.</p>
               </div>
             </div>
             
@@ -919,10 +977,10 @@ export default function Dashboard() {
                 {isVerifyingApi ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    চেক করা হচ্ছে...
+                    Checking...
                   </>
                 ) : (
-                  "কাজ শেষ, এখন রিফ্রেশ দিন"
+                  "Refresh Now"
                 )}
               </button>
             </div>
@@ -933,9 +991,9 @@ export default function Dashboard() {
       <main className="p-4 sm:p-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8 sm:mb-10">
           {[
-            { label: 'মোট ফাইল', value: files.length, icon: Layers, color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: 'ড্রাইভ স্টোরেজ', value: formatSize(files.reduce((acc, f) => acc + f.size, 0)), icon: HardDrive, color: 'text-purple-600', bg: 'bg-purple-50' },
-            { label: 'নিরাপত্তা', value: files.filter(f => f.isEncrypted).length > 0 ? 'AES-256' : 'Standard', icon: Lock, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'Total Files', value: files.length, icon: Layers, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: 'Free Storage', value: driveQuota ? (driveQuota.limit ? `${formatSize(Math.max(0, parseInt(driveQuota.limit) - parseInt(driveQuota.usage)))} Free` : 'Unlimited') : formatSize(files.reduce((acc, f) => acc + f.size, 0)), icon: HardDrive, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { label: 'Security', value: files.filter(f => f.isEncrypted).length > 0 ? 'AES-256' : 'Standard', icon: Lock, color: 'text-emerald-600', bg: 'bg-emerald-50' },
             { label: 'Audit', value: logs.length, icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50', onClick: () => setIsLogsOpen(true) },
           ].map((stat, i) => (
             <motion.div 
@@ -956,13 +1014,13 @@ export default function Dashboard() {
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900">ভোল্ট এরিয়া (Vault Assets)</h2>
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900">Vault Assets</h2>
           <div className="flex items-center gap-3">
             <button 
               onClick={handleRefresh}
               disabled={isRefreshing}
               className="flex-1 sm:flex-none p-2.5 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all active:scale-95 text-gray-500 disabled:opacity-50 shadow-sm flex items-center justify-center"
-              title="রিফ্রেশ করুন"
+              title="Refresh"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
@@ -971,7 +1029,7 @@ export default function Dashboard() {
               className="flex-3 sm:flex-none flex items-center justify-center gap-2 bg-black text-white px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-gray-800 transition-all active:scale-95 shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              ফাইল আপলোড করুন
+              Upload File
             </button>
           </div>
         </div>
@@ -1009,7 +1067,7 @@ export default function Dashboard() {
                       title="Preview"
                     >
                       <Eye className="w-4 h-4" />
-                      <span className="text-[10px] font-bold sm:hidden">দেখুন</span>
+                      <span className="text-[10px] font-bold sm:hidden">View</span>
                     </button>
                     <button 
                       onClick={(e) => {
@@ -1017,7 +1075,7 @@ export default function Dashboard() {
                         handleDelete(file);
                       }} 
                       className="p-2 bg-red-50/50 sm:bg-transparent hover:bg-red-50 rounded-lg text-red-500 transition-colors"
-                      title="মুছে ফেলুন"
+                      title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1049,7 +1107,7 @@ export default function Dashboard() {
                       ) : (
                         <>
                           <Download className="w-3.5 h-3.5" />
-                          {file.isEncrypted ? 'ডিক্রিপ্ট ও ডাউনলোড' : 'ডাউনলোড'}
+                          {file.isEncrypted ? 'Decrypt & Download' : 'Download'}
                         </>
                       )}
                     </button>
@@ -1150,9 +1208,9 @@ export default function Dashboard() {
                     <div className="bg-gray-100 p-6 rounded-3xl mb-4">
                       <FileText className="w-16 h-16 text-gray-400" />
                     </div>
-                    <h4 className="text-lg font-bold text-gray-900 mb-2">প্রিভিউ পাওয়া যাচ্ছে না</h4>
+                    <h4 className="text-lg font-bold text-gray-900 mb-2">Preview Not Available</h4>
                     <p className="text-sm text-gray-500 max-w-xs mx-auto">
-                      এই ধরণের ফাইল অ্যাপে সরাসরি দেখা সম্ভব নয়। দেখার জন্য ফাইলটি ডাউনলোড করুন।
+                      Direct preview is not possible for this file type. Please download the file to view it.
                     </p>
                   </div>
                 )}
@@ -1187,7 +1245,7 @@ export default function Dashboard() {
                 <div className="bg-amber-50 text-amber-600 p-3 sm:p-4 rounded-2xl mb-4">
                   <Lock className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900">ফাইল ডিক্রিপ্ট করুন</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Decrypt File</h2>
                 <p className="text-[10px] sm:text-xs text-gray-400 font-medium mt-1 truncate w-full px-4">
                   {fileToDecrypt?.name}
                 </p>
@@ -1203,7 +1261,7 @@ export default function Dashboard() {
                     autoFocus
                     value={decryptionKey}
                     onChange={(e) => setDecryptionKey(e.target.value)}
-                    placeholder="মাস্টার এনক্রিপশন কি দিন"
+                    placeholder="Enter Master Encryption Key"
                     className="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 outline-none transition-all placeholder:text-gray-300"
                   />
                 </div>
@@ -1218,7 +1276,7 @@ export default function Dashboard() {
                     }}
                     className="flex-1 px-4 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-200 transition-all"
                   >
-                    বাতিল
+                    Cancel
                   </button>
                   <button
                     type="submit"
@@ -1230,7 +1288,7 @@ export default function Dashboard() {
                     ) : (
                       <>
                         <Unlock className="w-4 h-4" />
-                        ডিক্রিপ্ট করুন
+                        Decrypt Now
                       </>
                     )}
                   </button>
@@ -1308,8 +1366,8 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: 20 }}
               className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl"
             >
-              <h2 className="text-2xl font-bold mb-2">সুরক্ষিত আপলোড</h2>
-              <p className="text-sm text-gray-500 mb-8 font-medium">ফাইলগুলো আপলোড হওয়ার আগেই আপনার ডিভাইসে এনক্রিপ্ট করা হয়।</p>
+              <h2 className="text-2xl font-bold mb-2">Secure Upload</h2>
+              <p className="text-sm text-gray-500 mb-8 font-medium">Files are encrypted on your device before they are uploaded.</p>
 
               <form onSubmit={handleUpload} className="space-y-6">
                 <div className="relative group divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden bg-gray-50">
@@ -1321,10 +1379,10 @@ export default function Dashboard() {
                   <div className="p-8 flex flex-col items-center justify-center text-center">
                     <Plus className="w-8 h-8 text-gray-300 group-hover:text-black mb-3 transition-colors" />
                     <p className="text-sm font-bold text-gray-900 truncate max-w-full">
-                      {selectedFile ? selectedFile.name : 'ফাইল নির্বাচন করুন'}
+                      {selectedFile ? selectedFile.name : 'Select File'}
                     </p>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      {selectedFile ? formatSize(selectedFile.size) : 'সুরক্ষার জন্য প্রস্তুত'}
+                      {selectedFile ? formatSize(selectedFile.size) : 'Ready for protection'}
                     </p>
                   </div>
                 </div>
@@ -1334,8 +1392,8 @@ export default function Dashboard() {
                     <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-xs font-bold text-amber-900">এনক্রিপ্টেড ফাইল শনাক্ত হয়েছে!</p>
-                        <p className="text-[10px] text-amber-700 font-medium">এটি ইতিমধ্যে এনক্রিপ্টেড (.enc) ফাইল। এটি ভোল্টে সুরক্ষিত অবস্থায় জমা থাকবে এবং খোলার সময় পাসওয়ার্ড চাইবে।</p>
+                        <p className="text-xs font-bold text-amber-900">Encrypted file detected!</p>
+                        <p className="text-[10px] text-amber-700 font-medium">This is already an encrypted (.enc) file. It will be stored in your vault and will require a password to open.</p>
                       </div>
                     </div>
                   )}
@@ -1348,13 +1406,13 @@ export default function Dashboard() {
                       type="password"
                       value={encryptionKey}
                       onChange={(e) => setEncryptionKey(e.target.value)}
-                      placeholder="সিক্রেট এনক্রিপশন কি (Master Key)"
+                      placeholder="Secret Encryption Key (Master Key)"
                       className="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-black/5 outline-none transition-all"
                     />
                   </div>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-2">
                     <Shield className="w-3 h-3" />
-                    {selectedFile?.name.toLowerCase().endsWith('.enc') ? 'এই ফাইলের সঠিক এনক্রিপশন কি মনে রাখুন' : 'ফাইলটি আপলোড করার আগে এনক্রিপ্ট করা হবে'}
+                    {selectedFile?.name.toLowerCase().endsWith('.enc') ? 'Remember the correct key for this file' : 'File will be encrypted before upload'}
                   </p>
                 </div>
 
@@ -1369,7 +1427,7 @@ export default function Dashboard() {
                       <span className="text-[10px] font-mono">{uploadProgress}%</span>
                     </div>
                   ) : <Shield className="w-5 h-5" />}
-                  {uploading ? 'আপলোড হচ্ছে...' : 'আপলোড করুন'}
+                  {uploading ? 'Uploading...' : 'Upload Now'}
                 </button>
               </form>
               {uploading && (
@@ -1407,9 +1465,9 @@ export default function Dashboard() {
                 <div className="bg-gray-50 text-black p-4 rounded-2xl mb-4">
                   <Settings className="w-8 h-8" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">সিকিউরিটি সেটিংস</h2>
+                <h2 className="text-xl font-bold text-gray-900">Security Settings</h2>
                 <p className="text-xs text-gray-400 font-medium mt-1">
-                  আপনার মাস্টার এনক্রিপশন কি সেট করুন
+                  Set your master encryption key
                 </p>
               </div>
 
@@ -1428,7 +1486,7 @@ export default function Dashboard() {
                         required
                         value={oldKeyInput}
                         onChange={(e) => setOldKeyInput(e.target.value)}
-                        placeholder="পুরানো মাস্টার কি দিন"
+                        placeholder="Old Master Key"
                         className={`block w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl text-sm outline-none transition-all placeholder:text-gray-300 ${
                           oldKeyInput === encryptionKey 
                             ? 'border-green-500 ring-2 ring-green-500/10' 
@@ -1439,12 +1497,12 @@ export default function Dashboard() {
                       />
                     </div>
                     {oldKeyInput && oldKeyInput !== encryptionKey && (
-                      <p className="text-[10px] text-red-500 font-bold px-1">পুরানো কি সঠিক নয়!</p>
+                      <p className="text-[10px] text-red-500 font-bold px-1">Old key is incorrect!</p>
                     )}
                     {oldKeyInput === encryptionKey && (
                       <p className="text-[10px] text-green-600 font-bold px-1 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" />
-                        পুরানো কি সঠিক
+                        Old key verified
                       </p>
                     )}
                   </div>
@@ -1459,7 +1517,7 @@ export default function Dashboard() {
                     required
                     value={newKeyInput}
                     onChange={(e) => setNewKeyInput(e.target.value)}
-                    placeholder="নতুন মাস্টার কি দিন"
+                    placeholder="New Master Key"
                     className="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-black/5 outline-none transition-all placeholder:text-gray-300"
                   />
                 </div>
@@ -1473,14 +1531,14 @@ export default function Dashboard() {
                     required
                     value={confirmKeyInput}
                     onChange={(e) => setConfirmKeyInput(e.target.value)}
-                    placeholder="নতুন কি নিশ্চিত করুন"
+                    placeholder="Confirm New Key"
                     className="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-black/5 outline-none transition-all placeholder:text-gray-300"
                   />
                 </div>
                 
                 <p className="text-[10px] text-gray-400 bg-gray-50 p-3 rounded-lg flex gap-2">
                   <Shield className="w-4 h-4 shrink-0" />
-                  মাস্টার কি পরিবর্তন করলে আগের এনক্রিপ্ট করা ফাইলগুলো ডাউনলোড করতে আপনার আগের কি-টি মনে রাখতে হবে।
+                  Changing your master key means you'll need the original key to download files encrypted with it.
                 </p>
 
                 <div className="flex gap-3 pt-2">
@@ -1494,14 +1552,14 @@ export default function Dashboard() {
                     }}
                     className="flex-1 px-4 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-200 transition-all font-mono uppercase tracking-widest"
                   >
-                    বাতিল
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     className="flex-[2] bg-black text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-800 transition-all shadow-lg flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    আপডেট করুন
+                    Update Key
                   </button>
                 </div>
               </form>

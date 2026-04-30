@@ -25,7 +25,19 @@ export default function AuthPage() {
         setAccessToken(credential.accessToken);
       }
     } catch (err: any) {
-      setError('গুগল লগইন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+      console.error("Google Auth Error:", err);
+      // Handle the case where Google might reject the client ID or other OAuth errors
+      if (err.message && (err.message.includes('401') || err.message.includes('deleted_client'))) {
+        setError('গুগল লগইন কনফিগারেশনে সমস্যা (Error 401)। দয়া করে আপনার ব্রাউজার ক্যাশ (Cache) ক্লিয়ার করুন অথবা অ্যাপটি নতুন ট্যাবে (Open in new tab) খুলে চেষ্টা করুন। যদি আপনি এই প্রোজেক্টটি গিটহাব থেকে ইমপোর্ট করে থাকেন, তবে নিশ্চিত করুন যে সঠিক Google Client ID ব্যবহার করা হয়েছে।');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('লগইন পপ-আপটি বন্ধ হয়ে গেছে। দয়া করে আবার চেষ্টা করুন অথবা ঠিকমতো কাজ না করলে অ্যাপটি নতুন ট্যাবে (Open in new tab) খুলুন।');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('আপনার ব্রাউজার পপ-আপ ব্লক করেছে। পপ-আপ এলাউ করে আবার ট্রাই করুন।');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setError('পূর্বের লগইন রিকোয়েস্ট বাতিল করা হয়েছে। আবার চেষ্টা করুন।');
+      } else {
+        setError('গুগল লগইন সফল হয়নি। দয়া করে নতুন ট্যাবে অ্যাপটি খুলে চেষ্টা করুন। (Error: ' + (err.code || 'Unknown') + ')');
+      }
     } finally {
       setLoading(false);
     }
@@ -44,28 +56,28 @@ export default function AuthPage() {
       }
     } catch (err: any) {
       console.error("Auth error details:", err);
-      let message = 'অপ্রত্যাশিত সমস্যা হয়েছে। আবার চেষ্টা করুন।';
+      let message = 'Unexpected problem occurred. Please try again.';
       
       const errorCode = err.code || (err.message && err.message.includes('auth/') ? err.message.match(/auth\/[a-z\-]+/)[0] : '');
 
       if (errorCode === 'auth/email-already-in-use' || (err.message && err.message.includes('email-already-in-use'))) {
-        message = 'এই ইমেইল দিয়ে আগেই অ্যাকাউন্ট করা হয়েছে। দয়া করে "Sign In" অপশন থেকে লগইন করুন।';
+        message = 'This email is already in use. Please sign in instead.';
       } else if (errorCode === 'auth/invalid-email' || (err.message && err.message.includes('invalid-email'))) {
-        message = 'ইমেইলটি সঠিক নয়। দয়া করে সঠিক ইমেইল দিন।';
+        message = 'Invalid email. Please provide a valid email.';
       } else if (errorCode === 'auth/weak-password' || (err.message && err.message.includes('weak-password'))) {
-        message = 'পাসওয়ার্ডটি অনেক দুর্বল। কমপক্ষে ৬টি অক্ষর বা সংখ্যা দিন।';
+        message = 'Password is too weak. Please use at least 6 characters.';
       } else if (errorCode === 'auth/user-not-found' || (err.message && err.message.includes('user-not-found'))) {
-        message = 'এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি। আপনি কি নতুন অ্যাকাউন্ট করতে চান?';
+        message = 'No account found with this email. Would you like to sign up?';
       } else if (errorCode === 'auth/wrong-password' || (err.message && err.message.includes('wrong-password'))) {
-        message = 'পাসওয়ার্ডটি ভুল হয়েছে। আবার চেষ্টা করুন।';
+        message = 'Incorrect password. Please try again.';
       } else if (errorCode === 'auth/invalid-credential') {
-        message = 'ইমেইল অথবা পাসওয়ার্ড ভুল। আবার চেষ্টা করুন।';
+        message = 'Incorrect email or password. Please try again.';
       } else if (errorCode === 'auth/network-request-failed') {
-        message = 'ইন্টারনেট কানেকশন চেক করুন।';
+        message = 'Please check your internet connection.';
       } else if (errorCode === 'auth/too-many-requests') {
-        message = 'অনেক বেশিবার ভুল চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।';
+        message = 'Too many attempts. Please try again later.';
       } else if (errorCode === 'auth/operation-not-allowed' || (err.message && err.message.includes('operation-not-allowed'))) {
-        message = 'এই প্রজেক্টে ইমেইল/পাসওয়ার্ড লগইন চালু করা নেই। দয়া করে গুগল দিয়ে লগইন করুন অথবা ফায়ারবেস কনসোল থেকে এটি চালু করুন।';
+        message = 'Email/Password login is not enabled for this project. Please sign in with Google.';
       } else if (err.message) {
         message = err.message;
       }
@@ -78,7 +90,7 @@ export default function AuthPage() {
 
   const handleForgotPassword = async () => {
     if (!email) {
-      setError('পাসওয়ার্ড রিসেট করতে আগে আপনার ইমেইলটি দিন।');
+      setError('Please provide your email to reset the password.');
       return;
     }
     
@@ -87,12 +99,12 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await resetPassword(email);
-      setMessage('পাসওয়ার্ড রিসেট করার একটি লিঙ্ক আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স (বা স্প্যাম ফোল্ডার) চেক করুন।');
+      setMessage('A password reset link has been sent to your email. Please check your inbox or spam folder.');
     } catch (err: any) {
       console.error("Reset password error:", err);
-      let msg = 'পাসওয়ার্ড রিসেট লিঙ্ক পাঠানো ব্যর্থ হয়েছে। ইমেইলটি সঠিক কিনা চেক করুন।';
+      let msg = 'Failed to send password reset link. Please check your email.';
       if (err.code === 'auth/user-not-found') {
-        msg = 'এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।';
+        msg = 'No account found with this email.';
       }
       setError(msg);
     } finally {
@@ -114,42 +126,45 @@ export default function AuthPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Files.M</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           {!isLogin && (
             <div className="relative">
               <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Full Name"
+                placeholder="আপনার পূর্ণ নাম"
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="off"
               />
             </div>
           )}
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="email"
-              placeholder="ইউজার আইডি (ইমেইল)"
-              className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="password"
-              placeholder="পাসওয়ার্ড"
-              className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+              <input
+                type="email"
+                placeholder="ইউজার আইডি (ইমেইল)"
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="off"
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="password"
+                placeholder="পাসওয়ার্ড"
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+              />
+            </div>
 
 
           {error && <p className="text-red-500 text-sm font-medium px-2">{error}</p>}
@@ -160,7 +175,7 @@ export default function AuthPage() {
             disabled={loading}
             className="w-full bg-black text-white py-4 rounded-2xl font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 mt-4 shadow-xl"
           >
-            {loading ? 'প্রসেসিং হচ্ছে...' : isLogin ? 'লগইন করুন' : 'অ্যাকাউন্ট তৈরি করুন'}
+            {loading ? 'প্রসেসিং হচ্ছে...' : isLogin ? 'লগইন করুন' : 'অ্যাকাউন্ট খুলুন'}
           </button>
         </form>
 
@@ -173,7 +188,7 @@ export default function AuthPage() {
                   type="button"
                   onClick={handleForgotPassword}
                   disabled={loading}
-                  title="পাসওয়ার্ড রিসেট করুন"
+                  title="Reset Password"
                   className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-black"
                 >
                   <Key className="w-3.5 h-3.5" />
@@ -202,7 +217,7 @@ export default function AuthPage() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-gray-500 hover:text-black font-semibold transition-colors text-sm"
           >
-            {isLogin ? "অ্যাকাউন্ট নেই? সাইনআপ করুন" : "আগে থেকেই অ্যাকাউন্ট আছে? লগইন করুন"}
+            {isLogin ? "অ্যাকাউন্ট নেই? সাইন আপ করুন" : "অ্যাকাউন্ট আছে? লগইন করুন"}
           </button>
         </div>
       </motion.div>

@@ -33,7 +33,7 @@ import { encryptFile, decryptFile } from '../lib/crypto';
 
 export default function Dashboard() {
   const { user, profile, logout, updateUserProfile } = useAuth();
-  const { accessToken, requestToken, logoutDrive, driveUser } = useDrive();
+  const { accessToken, requestToken, logoutDrive, driveUser, error: driveError } = useDrive();
   const [files, setFiles] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -927,6 +927,30 @@ export default function Dashboard() {
           </div>
         </button>
       </nav>
+
+      <AnimatePresence>
+        {driveError && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-red-500 text-white overflow-hidden"
+          >
+            <div className="max-w-7xl mx-auto px-8 py-3 flex items-center justify-between text-xs sm:text-sm font-bold">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>{driveError}</span>
+              </div>
+              <button 
+                onClick={logoutDrive}
+                className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition-colors border border-white/20"
+              >
+                Disconnect
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isDriveApiDisabled && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-4">

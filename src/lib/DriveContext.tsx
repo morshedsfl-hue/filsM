@@ -10,7 +10,7 @@ interface DriveContextType {
 
 const DriveContext = createContext<DriveContextType | null>(null);
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
 
 export function DriveProvider({ children }: { children: React.ReactNode, key?: React.Key }) {
@@ -61,6 +61,10 @@ export function DriveProvider({ children }: { children: React.ReactNode, key?: R
   const requestToken = (options?: { prompt?: string }): Promise<string> => {
     const lastEmail = localStorage.getItem('last_drive_email');
     return new Promise((resolve, reject) => {
+      if (!CLIENT_ID) {
+        reject(new Error('Google Client ID is missing. Please add VITE_GOOGLE_CLIENT_ID in the app settings.'));
+        return;
+      }
       try {
         // @ts-ignore
         const client = google.accounts.oauth2.initTokenClient({

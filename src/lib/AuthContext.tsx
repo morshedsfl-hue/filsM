@@ -8,6 +8,8 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   sendPasswordResetEmail,
   setPersistence,
   browserSessionPersistence
@@ -21,7 +23,6 @@ interface AuthContextType {
   profile: any;
   signUp: (email: string, pass: string, name: string) => Promise<void>;
   login: (email: string, pass: string) => Promise<void>;
-  loginWithGoogle: () => Promise<any>;
   updateUserProfile: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -47,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (docSnap.exists()) {
             setProfile(docSnap.data());
           } else {
-            // If profile doesn't exist, create it (likely first time Google login)
+            // If profile doesn't exist, create it
             const userData = {
               uid: user.uid,
               email: user.email || '',
@@ -111,16 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, email, pass);
   };
 
-  const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/drive.file');
-    provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-    provider.addScope('https://www.googleapis.com/auth/userinfo.email');
-    
-    const result = await signInWithPopup(auth, provider);
-    return GoogleAuthProvider.credentialFromResult(result);
-  };
-
   const logout = async () => {
     await signOut(auth);
     localStorage.removeItem('drive_access_token');
@@ -131,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, profile, signUp, login, loginWithGoogle, updateUserProfile, logout, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, profile, signUp, login, updateUserProfile, logout, resetPassword }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -44,7 +44,9 @@ export default function Dashboard() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [fileToDecrypt, setFileToDecrypt] = useState<any>(null);
   const [previewData, setPreviewData] = useState<{ url: string; name: string; type: string } | null>(null);
-  const [encryptionKey, setEncryptionKey] = useState(localStorage.getItem('vault_master_key') || '');
+  // SECURITY: master key is kept in memory only (sessionStorage) so it
+  // does not persist on disk after the browser tab is closed.
+  const [encryptionKey, setEncryptionKey] = useState(sessionStorage.getItem('vault_master_key') || '');
   const [decryptionKey, setDecryptionKey] = useState('');
   const [oldKeyInput, setOldKeyInput] = useState('');
   const [newKeyInput, setNewKeyInput] = useState('');
@@ -668,7 +670,7 @@ export default function Dashboard() {
     }
 
     setEncryptionKey(newKeyInput);
-    localStorage.setItem('vault_master_key', newKeyInput);
+    sessionStorage.setItem('vault_master_key', newKeyInput);
     await updateUserProfile({ hasMasterKey: true });
     setIsSettingsOpen(false);
     setOldKeyInput('');

@@ -1,16 +1,18 @@
 import CryptoJS from 'crypto-js';
 
-const FALLBACK_SECRET = 'vault-secret-key-2024';
-
-export function encryptData(data: string, secretKey: string = FALLBACK_SECRET): string {
+// SECURITY: There is intentionally NO fallback/default key.
+// Encrypting with a publicly-known secret provides zero protection,
+// so callers MUST supply their own key.
+export function encryptData(data: string, secretKey: string): string {
+  if (!secretKey || typeof secretKey !== 'string') {
+    throw new Error('Encryption requires a secret key.');
+  }
   return CryptoJS.AES.encrypt(data, secretKey).toString();
 }
 
-export function decryptData(encryptedData: string, secretKey: string = FALLBACK_SECRET): string | null {
+export function decryptData(encryptedData: string, secretKey: string): string | null {
   if (!encryptedData || typeof encryptedData !== 'string') return null;
-  
-  // Basic validation to check if it looks like CryptoJS AES output (Base64)
-  // CryptoJS typically starts with U2FsdGVkX1 if it contains salt
+  if (!secretKey || typeof secretKey !== 'string') return null;
   if (encryptedData.length < 16) return null;
 
   try {
